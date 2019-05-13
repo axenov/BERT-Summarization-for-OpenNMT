@@ -55,7 +55,7 @@ def build_embeddings(opt, text_field, for_encoder=True):
     return emb
 
 
-def build_encoder(opt, embeddings):
+def build_encoder(opt, embeddings, vocab):
     """
     Various encoder dispatcher function.
     Args:
@@ -63,13 +63,15 @@ def build_encoder(opt, embeddings):
         embeddings (Embeddings): vocab embeddings for this encoder.
     """
     enc_type = opt.encoder_type if opt.model_type == "text" else opt.model_type
+    opt.vocab=vocab
+
     return str2enc[enc_type].from_opt(opt, embeddings)
 
 
 def build_decoder(opt, embeddings):
     """
     Various decoder dispatcher function.
-    Args:
+    Args: 
         opt: the option in current environment.
         embeddings (Embeddings): vocab embeddings for this decoder.
     """
@@ -129,8 +131,20 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
     else:
         src_emb = None
 
+
+
+    if gpu and gpu_id is not None:
+        device = torch.device("cuda", gpu_id)
+    elif gpu and not gpu_id:
+        device = torch.device("cuda")
+    elif not gpu:
+        device = torch.device("cpu")
+
+    # Vocabulary to generate text from tensor for Bert-based encoders
+    vocab=dict(fields)["src"].base_field.vocab
     # Build encoder.
-    encoder = build_encoder(model_opt, src_emb)
+    encoder = build_encoder(model_opt, src_emb, vocab)
+
 
     # Build decoder.
     tgt_field = fields["tgt"]
@@ -147,12 +161,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
     decoder = build_decoder(model_opt, tgt_emb)
 
     # Build NMTModel(= encoder + decoder).
-    if gpu and gpu_id is not None:
-        device = torch.device("cuda", gpu_id)
-    elif gpu and not gpu_id:
-        device = torch.device("cuda")
-    elif not gpu:
-        device = torch.device("cpu")
+
     model = onmt.models.NMTModel(encoder, decoder)
 
     # Build Generator.

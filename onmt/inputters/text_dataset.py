@@ -118,6 +118,7 @@ class TextMultiField(RawField):
 
         # batch (list(list(list))): batch_size x len(self.fields) x seq_len
         batch_by_feat = list(zip(*batch))
+        #print(batch_by_feat[0])
         base_data = self.base_field.process(batch_by_feat[0], device=device)
         if self.base_field.include_lengths:
             # lengths: batch_size
@@ -128,6 +129,8 @@ class TextMultiField(RawField):
         levels = [base_data] + feats
         # data: seq_len x batch_size x len(self.fields)
         data = torch.stack(levels, 2)
+        #print(base_data)
+        #print(self.fields[0][1])
         if self.base_field.include_lengths:
             return data, lengths
         else:
@@ -144,7 +147,8 @@ class TextMultiField(RawField):
                 lists of tokens/feature tags for the sentence. The output
                 is ordered like ``self.fields``.
         """
-
+        #for f in self.fields:
+        #    print(f[1].preprocess(x))
         return [f.preprocess(x) for _, f in self.fields]
 
     def __getitem__(self, item):

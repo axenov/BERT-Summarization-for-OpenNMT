@@ -3,6 +3,9 @@
 """
     Pre-process Data / features files and build vocabulary
 """
+
+#                       -valid_src data/germanWiki/src_val_bert.txt \
+#                        -valid_tgt data/germanWiki/tgt_val_bert.txt \
 import codecs
 import glob
 import sys

@@ -60,7 +60,8 @@ def get_fields(
     src_data_type,
     n_src_feats,
     n_tgt_feats,
-    pad='<blank>',
+    #pad='<blank>',
+    pad ='[PAD]',
     bos='<s>',
     eos='</s>',
     dynamic_dict=False,
@@ -333,7 +334,6 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
     Returns:
         Dict of Fields
     """
-
     counters = defaultdict(Counter)
 
     if src_vocab_path:
