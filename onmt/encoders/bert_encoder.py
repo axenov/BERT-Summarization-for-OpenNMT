@@ -39,7 +39,7 @@ class BertEncoder(EncoderBase):
 
         self.vocab=vocab
 
-        self.BertEmbed_size = 768
+        self.BertEmbed_size = 768*4
         self.pre_out = nn.Linear(self.BertEmbed_size, hidden_size)
 
 
@@ -68,8 +68,16 @@ class BertEncoder(EncoderBase):
             #Get Bert hidden states
             with no_grad():
                 hidden_states, _ = self.bertEmbedding(tokens_tensor)
-            hidden_state = hidden_states[8]+hidden_states[9]+hidden_states[10]+hidden_states[11]
-            output[:, pos:pos + min(window_length,len(input_text))] += hidden_state
+            #hidden_state = hidden_states[8]+hidden_states[9]+hidden_states[10]+hidden_states[11]
+            hidden_state = torch.cat((hidden_states[8],hidden_states[9],hidden_states[10],hidden_states[11]), 2)
+            print(hidden_state.shape)
+            print(output.shape)
+            #output[:, pos:pos + min(window_length,len(input_text))] += hidden_state
+            output[:, pos + stride:pos + min(window_length-stride,len(input_text))] += hidden_state[stride:window_length-stride]
+            if pos!=0:
+                output[:, pos:pos + stride] += hidden_state[0:stride]/2
+            if len(input_text)>=window_length:
+                output[:, pos + window_length-stride:pos + window_length] += hidden_state[window_length-stride:window_length]/2
 
         return output
 
