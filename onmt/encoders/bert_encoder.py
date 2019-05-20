@@ -10,6 +10,7 @@ from onmt.modules import MultiHeadedAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
 from pytorch_pretrained_bert import BertTokenizer, BertModel, BertForMaskedLM
 import time
+import math
 
 
 
@@ -52,7 +53,7 @@ class BertEncoder(EncoderBase):
     def get_hidden_states(self,input_text,window_length,stride):
         #Calculate number of windows
         if len(input_text)>window_length:
-            num_batch = (len(input_text)-window_length)//(window_length - stride)+2
+            num_batch = math.ceil(len(input_text)/(window_length - stride))
         else: num_batch = 1
         #Positions of windows
         start_tockens = [(window_length - stride)*i  for i in range(num_batch)]
@@ -68,16 +69,31 @@ class BertEncoder(EncoderBase):
             #Get Bert hidden states
             with no_grad():
                 hidden_states, _ = self.bertEmbedding(tokens_tensor)
-            #hidden_state = hidden_states[8]+hidden_states[9]+hidden_states[10]+hidden_states[11]
+            #hidden_stateOld = hidden_states[8]+hidden_states[9]+hidden_states[10]+hidden_states[11]
             hidden_state = torch.cat((hidden_states[8],hidden_states[9],hidden_states[10],hidden_states[11]), 2)
-            print(hidden_state.shape)
-            print(output.shape)
-            #output[:, pos:pos + min(window_length,len(input_text))] += hidden_state
-            output[:, pos + stride:pos + min(window_length-stride,len(input_text))] += hidden_state[stride:window_length-stride]
+            output[:, pos:pos + min(window_length,len(input_text))] += hidden_state
+            if i!=0:
+            	output[:, pos:pos + stride] = output[:, pos:pos + stride]/2
+            #print(output[:, pos + stride:pos + min(window_length-stride,len(input_text))])
+            """
+            output[:, pos + stride:pos + min(window_length-stride,len(input_text))] += hidden_state[:,stride:window_length-stride]
+            print('blablabla')
+            print(output)
+            print(output[:, pos + stride:pos + min(window_length-stride,len(input_text))])
+            print(hidden_state[:,stride:window_length-stride])
             if pos!=0:
-                output[:, pos:pos + stride] += hidden_state[0:stride]/2
-            if len(input_text)>=window_length:
-                output[:, pos + window_length-stride:pos + window_length] += hidden_state[window_length-stride:window_length]/2
+                output[:, pos:pos + stride] += hidden_state[:,0:stride]/2
+            else:
+            	output[:, pos:pos + stride] += hidden_state[:,0:stride]
+            print(output)
+            print(hidden_state[:,0:stride])
+            print
+            if len(text_batch)>=window_length:
+                output[:, pos + window_length-stride:pos + window_length] += hidden_state[:,window_length-stride:window_length]/2
+            print(output)
+            print(hidden_state[:,window_length-stride:window_length])
+            """
+
 
         return output
 
@@ -104,7 +120,7 @@ class BertEncoder(EncoderBase):
                 input_text.append(word)
             with no_grad():
                 #Get Bert hidden states
-                encoder_embedded = self.get_hidden_states(input_text,512,128)
+                encoder_embedded = self.get_hidden_states(input_text,512,16)
 
                 #indexed_tokens = self.tokenizer.convert_tokens_to_ids(input_text[0:511])
                 #tokens_tensor = tensor([indexed_tokens])
@@ -113,7 +129,6 @@ class BertEncoder(EncoderBase):
                 #Get Bert hidden states
                 #hidden_states, _ = self.bertEmbedding(tokens_tensor)
                 #encoder_embedded = hidden_states[8]+hidden_states[9]+hidden_states[10]+hidden_states[11]
-
                 bert_tensors.append(encoder_embedded)
 
         bert_tensors = cat(bert_tensors,0)
