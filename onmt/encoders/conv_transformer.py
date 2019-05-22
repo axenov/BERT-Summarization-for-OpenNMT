@@ -5,11 +5,14 @@ Implementation of "Attention is All You Need"
 import torch.nn as nn
 
 from onmt.encoders.encoder import EncoderBase
+from onmt.modules import ConvMultiHeadedAttention
 from onmt.modules import MultiHeadedAttention
+
+
 from onmt.modules.position_ffn import PositionwiseFeedForward
 
 
-class TransformerEncoderLayer(nn.Module):
+class ConvTransformerEncoderLayer(nn.Module):
     """
     A single layer of the transformer encoder.
 
@@ -22,13 +25,22 @@ class TransformerEncoderLayer(nn.Module):
         dropout (float): dropout probability(0-1.0).
     """
 
-    def __init__(self, d_model, heads, d_ff, dropout,
+    def __init__(self, d_model, heads, d_ff, dropout, layer_index,
                  max_relative_positions=0):
-        super(TransformerEncoderLayer, self).__init__()
+        super(ConvTransformerEncoderLayer, self).__init__()
 
-        self.self_attn = MultiHeadedAttention(
-            heads, d_model, dropout=dropout,
-            max_relative_positions=max_relative_positions)
+        if layer_index==0:
+            self.self_attn = ConvMultiHeadedAttention(
+                heads, d_model,11,1, dropout=dropout,
+                max_relative_positions=max_relative_positions)
+        elif layer_index==1:
+            self.self_attn = MultiHeadedAttention(
+                heads, d_model, dropout=dropout,
+                max_relative_positions=max_relative_positions)
+        else:
+            self.self_attn = MultiHeadedAttention(
+                heads, d_model, dropout=dropout,
+                max_relative_positions=max_relative_positions)
         self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout)
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
         self.dropout = nn.Dropout(dropout)
@@ -51,7 +63,7 @@ class TransformerEncoderLayer(nn.Module):
         return self.feed_forward(out)
 
 
-class TransformerEncoder(EncoderBase):
+class ConvTransformerEncoder(EncoderBase):
     """The Transformer encoder from "Attention is All You Need"
     :cite:`DBLP:journals/corr/VaswaniSPUJGKP17`
 
@@ -84,13 +96,12 @@ class TransformerEncoder(EncoderBase):
 
     def __init__(self, num_layers, d_model, heads, d_ff, dropout, embeddings,
                  max_relative_positions):
-        super(TransformerEncoder, self).__init__()
+        super(ConvTransformerEncoder, self).__init__()
 
         self.embeddings = embeddings
-        print(max_relative_positions)
         self.transformer = nn.ModuleList(
-            [TransformerEncoderLayer(
-                d_model, heads, d_ff, dropout,
+            [ConvTransformerEncoderLayer(
+                d_model, heads, d_ff, dropout, i,
                 max_relative_positions=max_relative_positions)
              for i in range(num_layers)])
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)

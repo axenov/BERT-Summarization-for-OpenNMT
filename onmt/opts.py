@@ -69,7 +69,7 @@ def model_opts(parser):
               help='Data type of the model.')
 
     group.add('--encoder_type', '-encoder_type', type=str, default='rnn',
-              choices=['rnn', 'brnn', 'mean', 'transformer', 'cnn', 'bert','bert-transformer'],
+              choices=['rnn', 'brnn', 'mean', 'transformer', 'cnn', 'bert','bert-transformer','conv-transformer'],
               help="Type of encoder layer to use. Non-RNN layers "
                    "are experimental. Options are "
                    "[rnn|brnn|mean|transformer|cnn|bert].")
