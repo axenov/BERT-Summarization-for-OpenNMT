@@ -213,7 +213,8 @@ class ConvMultiHeadedAttention(nn.Module):
           #attn_temp[:,i,:,max(0,i-(N-1)//2):min(head_count,i+(N-1)//2+1),:] = attn[:,i,:,max(0,i-(N-1)//2):min(head_count,i+(N-1)//2+1),:]
           mask_w[:,i,:,max(0,i-(N-1)//2):min(head_count,i+(N-1)//2+1),:] = 1
         for j in range(query_len):
-          mask_w[:,:,j,:,max(0,j-(M-1)//2):min(query_len,j+(M-1)//2+1)] = 1
+          #mask_w[:,:,j,:,max(0,j-(M-1)//2):min(query_len,j+(M-1)//2+1)] = 1
+          mask_w[:,:,j,:,:] = 1
           #attn_temp[:,:,j,:,max(0,j-(M-1)//2):min(query_len,j+(M-1)//2+1)] = attn[:,:,j,:,max(0,j-(M-1)//2):min(query_len,j+(M-1)//2+1)]
         #print('6: {}'.format(torch.cuda.memory_allocated() / 1024**2))
         torch.cuda.empty_cache()  
