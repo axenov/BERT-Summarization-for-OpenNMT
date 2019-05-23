@@ -181,7 +181,6 @@ class ConvMultiHeadedAttention(nn.Module):
 
         # 2) Calculate and scale scores.
         query = query / math.sqrt(dim_per_head)
-
         # batch x num_heads * query_len x num_heads * key_len
         query = query.contiguous().view(batch_size, head_count * query_len, dim_per_head)
         key = key.contiguous().view(batch_size, head_count * key_len, dim_per_head)
@@ -202,12 +201,12 @@ class ConvMultiHeadedAttention(nn.Module):
           scores = scores.transpose(2,3).contiguous().view(batch_size, head_count * query_len, head_count * key_len)
         # 3) Apply attention dropout and compute context vectors.
         #attn = self.softmax(scores).to(query.dtype)
-        attn = self.convol_softmax(scores, head_count,M, N, device).to(query.dtype)
+        #attn = self.convol_softmax(scores, head_count,M, N, device).to(query.dtype)
+
+        attn = scores.contiguous().view(batch_size, head_count, query_len, head_count , key_len)
         del scores
-
-        attn = attn.contiguous().view(batch_size, head_count, query_len, head_count , key_len)
-
-        mask_w = torch.zeros_like(attn, dtype=torch.uint8)  # or dtype=torch.ByteTensor
+        mask_w = torch.zeros_like(attn, dtype=torch.uint8)  
+        #print('2: {}'.format(torch.cuda.memory_allocated() / 1024**2))
 
         attn_masked = torch.zeros_like(attn).to(device)
         for i in range(head_count):
@@ -216,15 +215,19 @@ class ConvMultiHeadedAttention(nn.Module):
         for j in range(query_len):
           mask_w[:,:,j,:,max(0,j-(M-1)//2):min(query_len,j+(M-1)//2+1)] = 1
           #attn_temp[:,:,j,:,max(0,j-(M-1)//2):min(query_len,j+(M-1)//2+1)] = attn[:,:,j,:,max(0,j-(M-1)//2):min(query_len,j+(M-1)//2+1)]
-        torch.cuda.empty_cache()
         #print('6: {}'.format(torch.cuda.memory_allocated() / 1024**2))
-
-        attn_masked.masked_scatter_(mask_w,attn)
         torch.cuda.empty_cache()  
-        #print('7: {}'.format(torch.cuda.memory_allocated() / 1024**2))
 
-        #attn = attn_temp
+        #attn_masked = attn_masked.contiguous().view(batch_size * head_count * query_len, head_count *  key_len)
+        #mask_w = mask_w.contiguous().view(batch_size * head_count * query_len, head_count *  key_len)
+        #attn = attn.contiguous().view(batch_size * head_count * query_len, head_count *  key_len)
+        attn_masked.masked_scatter_(mask_w,attn)
         attn_masked = attn_masked.contiguous().view(batch_size, head_count * query_len, head_count *  key_len)
+
+        #print('7: {}'.format(torch.cuda.memory_allocated() / 1024**2))
+        torch.cuda.empty_cache()  
+        attn_masked = self.softmax(attn_masked).to(query.dtype)
+        #print('8: {}'.format(torch.cuda.memory_allocated() / 1024**2))
 
         drop_attn = self.dropout(attn_masked)
         context_original = torch.matmul(drop_attn, value)
