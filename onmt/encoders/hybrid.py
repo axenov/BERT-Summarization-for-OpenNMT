@@ -3,12 +3,14 @@ Implementation of "Attention is All You Need"
 """
 
 import torch.nn as nn
-
+import torch as torch
 from onmt.encoders.encoder import EncoderBase
 from onmt.modules import MultiHeadedAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
+from onmt.utils.rnn_factory import rnn_factory
 
-""" Multi-Head Attention module """
+"""
+#Multi-Head Attention module 
 import math
 import torch
 import torch.nn as nn
@@ -55,7 +57,6 @@ class MultiHeadedRNN(nn.Module):
             linear_rnns[:,:,i*self.dim_per_head:(i+1)*self.dim_per_head] rnn_states, rnn_final = self.rnn(input_seq)
 
         # Apply attention dropout and compute context vectors.
-        states = self.softmax(linear_rnns).to(linear_rnns.dtype)
         drop_states = self.dropout(states)
 
         context = unshape(drop_states)
@@ -69,30 +70,25 @@ class MultiHeadedRNN(nn.Module):
 
         return output, top_attn
 
-
-
+"""
 class RNNEncoderLayer(nn.Module):
-    """
-    A single layer of the transformer encoder.
-
-    Args:
-        d_model (int): the dimension of keys/values/queries in
-                   MultiHeadedAttention, also the input size of
-                   the first-layer of the PositionwiseFeedForward.
-        heads (int): the number of head for MultiHeadedAttention.
-        d_ff (int): the second-layer of the PositionwiseFeedForward.
-        dropout (float): dropout probability(0-1.0).
-    """
 
     def __init__(self, d_model, heads, d_ff, dropout,
                  rnn_type, bidirectional):
-        super(TransformerEncoderLayer, self).__init__()
+        super(RNNEncoderLayer, self).__init__()
 
-        self.mh_rnn = MultiHeadedRNN(
-            heads, d_model, dropout=dropout, rnn_type, bidirectional)
+        #self.mh_rnn = MultiHeadedRNN(
+        #    heads, d_model, dropout=dropout, rnn_type, bidirectional)
         self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout)
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
         self.dropout = nn.Dropout(dropout)
+        self.rnn, self.no_pack_padded_seq = \
+            rnn_factory(rnn_type,
+                        input_size=d_model,
+                        hidden_size=d_model,
+                        num_layers=1,
+                        dropout=dropout,
+                        bidirectional=bidirectional)
 
     def forward(self, inputs, mask):
         """
@@ -106,8 +102,7 @@ class RNNEncoderLayer(nn.Module):
             * outputs ``(batch_size, src_len, model_dim)``
         """
         input_norm = self.layer_norm(inputs)
-        context, _ = self.mh_rnn(input_norm,
-                                    mask=mask, type="self")
+        context,_ = self.rnn(input_norm)
         out = self.dropout(context) + inputs
         return self.feed_forward(out)
 
@@ -156,7 +151,7 @@ class TransformerEncoderLayer(nn.Module):
         return self.feed_forward(out)
 
 
-class TransformerEncoder(EncoderBase):
+class HybridTransformerEncoder(EncoderBase):
     """The Transformer encoder from "Attention is All You Need"
     :cite:`DBLP:journals/corr/VaswaniSPUJGKP17`
 
@@ -189,7 +184,7 @@ class TransformerEncoder(EncoderBase):
 
     def __init__(self, num_layers, d_model, heads, d_ff, dropout, embeddings,
                  max_relative_positions,rnn_type, bidirectional):
-        super(TransformerEncoder, self).__init__()
+        super(HybridTransformerEncoder, self).__init__()
 
         self.embeddings = embeddings
         self.transformer = nn.ModuleList(
@@ -197,6 +192,10 @@ class TransformerEncoder(EncoderBase):
                 d_model, heads, d_ff, dropout,
                 max_relative_positions=max_relative_positions)
              for i in range(num_layers)])
+        self.rnn = RNNEncoderLayer(
+                d_model, heads, d_ff, dropout,
+                rnn_type, bidirectional)
+
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
 
     @classmethod
@@ -225,8 +224,18 @@ class TransformerEncoder(EncoderBase):
         padding_idx = self.embeddings.word_padding_idx
         mask = words.data.eq(padding_idx).unsqueeze(1)  # [B, 1, T]
         # Run the forward pass of every layer of the tranformer.
+        out_rnn = out
         for layer in self.transformer:
             out = layer(out, mask)
-        out = self.layer_norm(out)
+        out = self.layer_norm(out).transpose(0, 1).contiguous()
+        #print("out: {}".format(out.shape))
 
-        return emb, out.transpose(0, 1).contiguous(), lengths
+        out_rnn = self.rnn(out_rnn, mask)
+        out_rnn = self.layer_norm(out)
+        #print("out_rnn: {}".format(out_rnn.shape))
+        
+        out_comb = torch.stack([out,out_rnn])
+        #print("out_comb: {}".format(out_comb.shape))
+
+
+        return emb, out_comb, lengths

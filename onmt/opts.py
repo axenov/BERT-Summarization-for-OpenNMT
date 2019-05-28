@@ -69,12 +69,12 @@ def model_opts(parser):
               help='Data type of the model.')
 
     group.add('--encoder_type', '-encoder_type', type=str, default='rnn',
-              choices=['rnn', 'brnn', 'mean', 'transformer', 'cnn', 'bert','bert-transformer','conv-transformer'],
+              choices=['rnn', 'brnn', 'mean', 'transformer', 'cnn', 'bert','bert-transformer','conv-transformer','hybrid'],
               help="Type of encoder layer to use. Non-RNN layers "
                    "are experimental. Options are "
                    "[rnn|brnn|mean|transformer|cnn|bert].")
     group.add('--decoder_type', '-decoder_type', type=str, default='rnn',
-              choices=['rnn', 'transformer', 'cnn'],
+              choices=['rnn', 'transformer', 'cnn','hybrid'],
               help="Type of decoder layer to use. Non-RNN layers "
                    "are experimental. Options are "
                    "[rnn|transformer|cnn].")
@@ -122,7 +122,7 @@ def model_opts(parser):
     # group.add('--residual', '-residual',   action="store_true",
     #                     help="Add residual connections between RNN layers.")
 
-    group.add('--brnn', '-brnn', action=DeprecateAction,
+    group.add('--brnn', '-brnn', action="store_true",#action=DeprecateAction,
               help="Deprecated, use `encoder_type`.")
 
     group.add('--context_gate', '-context_gate', type=str, default=None,
