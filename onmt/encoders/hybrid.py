@@ -8,79 +8,21 @@ from onmt.encoders.encoder import EncoderBase
 from onmt.modules import MultiHeadedAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.utils.rnn_factory import rnn_factory
+from onmt.modules import ConvMultiHeadedAttention
 
-"""
-#Multi-Head Attention module 
-import math
-import torch
-import torch.nn as nn
-
-from onmt.utils.misc import generate_relative_positions_matrix,\
-                            relative_matmul
-# from onmt.utils.misc import aeq
-
-
-class MultiHeadedRNN(nn.Module):
-
-    def __init__(self, head_count, model_dim, dropout=0.1,rnn_type, bidirectional):
-        assert model_dim % head_count == 0
-        self.dim_per_head = model_dim // head_count
-        num_directions = 2 if bidirectional else 1
-        assert model_dim % num_directions == 0
-        self.model_dim = model_dim // num_directions
-        self.head_count = head_count
-        super(MultiHeadedRNN, self).__init__()
-
-        hidden_size = hidden_size // num_directions
-
-        self.rnn, self.no_pack_padded_seq = \
-            rnn_factory(rnn_type,
-                        input_size=embeddings.embedding_size,
-                        hidden_size=self.dim_per_head,
-                        num_layers=num_layers,
-                        dropout=dropout,
-                        bidirectional=bidirectional)
-
-        self.dropout = nn.Dropout(dropout)
-        self.final_linear = nn.Linear(model_dim, model_dim)
-
-
-    def forward(self, input_seq, type=None):
-
-        batch_size = input_seq.size(0)
-        dim_per_head = self.dim_per_head
-        head_count = self.head_count
-        input_len = input_seq.size(1)
-        device = input.device
-        linear_rnns = zeros(batch_size,input_len, head_count * self.dim_per_head)
-        for i in range(head_count):
-            linear_rnns[:,:,i*self.dim_per_head:(i+1)*self.dim_per_head] rnn_states, rnn_final = self.rnn(input_seq)
-
-        # Apply attention dropout and compute context vectors.
-        drop_states = self.dropout(states)
-
-        context = unshape(drop_states)
-
-        output = self.final_linear(context)
-        # Return one attn
-        top_attn = attn \
-            .view(batch_size, head_count,
-                  query_len, key_len)[:, 0, :, :] \
-            .contiguous()
-
-        return output, top_attn
-
-"""
 class RNNEncoderLayer(nn.Module):
 
     def __init__(self, d_model, heads, d_ff, dropout,
-                 rnn_type, bidirectional):
+                 rnn_type, bidirectional,
+                 max_relative_positions=0):
         super(RNNEncoderLayer, self).__init__()
 
-        #self.mh_rnn = MultiHeadedRNN(
-        #    heads, d_model, dropout=dropout, rnn_type, bidirectional)
+        self.self_attn = MultiHeadedAttention(
+            heads, d_model, dropout=dropout,
+            max_relative_positions=max_relative_positions)
         self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout)
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
+        self.layer_norm_2 = nn.LayerNorm(d_model, eps=1e-6)
         self.dropout = nn.Dropout(dropout)
         self.rnn, self.no_pack_padded_seq = \
             rnn_factory(rnn_type,
@@ -102,6 +44,13 @@ class RNNEncoderLayer(nn.Module):
             * outputs ``(batch_size, src_len, model_dim)``
         """
         input_norm = self.layer_norm(inputs)
+
+        #attn, _ = self.self_attn(input_norm, input_norm, input_norm, mask=mask, type="self")
+        #attn_drop = self.dropout(attn) + inputs
+        #attn_drop_norm = self.layer_norm_2(attn_drop)
+        #context,_ = self.rnn(attn_drop_norm)
+        #out = self.dropout(context) + attn_drop     
+
         context,_ = self.rnn(input_norm)
         out = self.dropout(context) + inputs
         return self.feed_forward(out)
@@ -122,15 +71,24 @@ class TransformerEncoderLayer(nn.Module):
         dropout (float): dropout probability(0-1.0).
     """
 
-    def __init__(self, d_model, heads, d_ff, dropout,
+    def __init__(self, d_model, heads, d_ff, dropout, layer_index, num_layers,
                  max_relative_positions=0):
         super(TransformerEncoderLayer, self).__init__()
 
-        self.self_attn = MultiHeadedAttention(
-            heads, d_model, dropout=dropout,
-            max_relative_positions=max_relative_positions)
+
+        if layer_index<num_layers//2:
+            self.self_attn = ConvMultiHeadedAttention(
+                heads, d_model,5,3, dropout=dropout,
+                max_relative_positions=max_relative_positions)
+
+        else:
+            self.self_attn = MultiHeadedAttention(
+                heads, d_model, dropout=dropout,
+                max_relative_positions=max_relative_positions)
+
         self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout)
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
+
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, inputs, mask):
@@ -189,12 +147,13 @@ class HybridTransformerEncoder(EncoderBase):
         self.embeddings = embeddings
         self.transformer = nn.ModuleList(
             [TransformerEncoderLayer(
-                d_model, heads, d_ff, dropout,
+                d_model, heads, d_ff, dropout,i,num_layers,
                 max_relative_positions=max_relative_positions)
              for i in range(num_layers)])
         self.rnn = RNNEncoderLayer(
                 d_model, heads, d_ff, dropout,
-                rnn_type, bidirectional)
+                rnn_type, bidirectional,
+                max_relative_positions=max_relative_positions)
 
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
 
