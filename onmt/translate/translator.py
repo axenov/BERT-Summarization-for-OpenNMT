@@ -463,14 +463,12 @@ class Translator(object):
             self._exclusion_idxs, return_attention, self.max_length,
             sampling_temp, keep_topk, memory_lengths)
 
-        #log_file = open("logs.txt", "w", encoding='utf-8')
         for step in range(max_length):
             # Shape: (1, B, 1)
             if self.decoder_type == "bert":
                 decoder_input = random_sampler.alive_seq[:, :].view(-1, 1, 1)
             else:
                 decoder_input = random_sampler.alive_seq[:, -1].view(1, -1, 1)
-            #print(decoder_input.shape)
 
             log_probs, attn = self._decode_and_generate(
                 decoder_input,
@@ -483,11 +481,7 @@ class Translator(object):
                 batch_offset=random_sampler.select_indices,
                 alive_seq = random_sampler.alive_seq
             )
-            #for i,pr in enumerate(log_probs.view(log_probs.numel())):
-            #    log_file.write(str(pr.item()))
-            #    if i != log_probs.numel()-1:
-            #        log_file.write(', ')
-            #log_file.write("\n")
+
 
             random_sampler.advance(log_probs, attn)
             any_batch_is_finished = random_sampler.is_finished.any()
@@ -514,7 +508,6 @@ class Translator(object):
                 self.model.decoder.map_state(
                     lambda state, dim: state.index_select(dim, select_indices))
 
-        #log_file.close()
         results["scores"] = random_sampler.scores
         results["predictions"] = random_sampler.predictions
         results["attention"] = random_sampler.attention
@@ -548,7 +541,6 @@ class Translator(object):
 
         enc_states, memory_bank, src_lengths = self.model.encoder(
             src, src_lengths)
-        #print('memory_bank_translate {}'.format(memory_bank.shape))
         if src_lengths is None:
             assert not isinstance(memory_bank, tuple), \
                 'Ensemble decoding only supported for text data'
@@ -570,13 +562,11 @@ class Translator(object):
             batch_offset=None,
             alive_seq = None,
             valid = False):
-        #print(decoder_in.shape)
         if self.copy_attn:
             # Turn any copied words into UNKs.
             decoder_in = decoder_in.masked_fill(
                 decoder_in.gt(self._tgt_vocab_len - 1), self._tgt_unk_idx
             )
-        #print(decoder_in.shape)
 
         # Decoder forward, takes [tgt_len, batch, nfeats] as input
         # and [src_len, batch, hidden] as memory_bank
@@ -586,14 +576,10 @@ class Translator(object):
         dec_out, dec_attn = self.model.decoder(
             decoder_in, memory_bank, memory_lengths=memory_lengths, step=step
         )
-        #print(decoder_in.shape)
-        #print(dec_out.shape)
+
         if not valid:
             dec_out = dec_out[-1,:,:].unsqueeze(0)
             dec_attn['std'] = dec_attn['std'][-1,:,:].unsqueeze(0)
-        #print(dec_out.shape)
-
-        #
 
         # Generator forward.
         if not self.copy_attn:
@@ -609,11 +595,6 @@ class Translator(object):
                 attn = dec_attn["copy"][:decoder_in.size(0),:,:]#.unsqueeze(0)
             else:
                 attn = dec_attn["copy"][-1,:,:].unsqueeze(0)
-            #print("blablabla")
-            #print(decoder_in.shape)
-            #print(dec_out.shape)
-            #print(attn.shape)
-            #print(src_map.shape)
             scores = self.model.generator(dec_out.view(-1, dec_out.size(2)),
                                           attn.view(-1, attn.size(2)),
                                           src_map)
@@ -630,13 +611,11 @@ class Translator(object):
                 batch_dim=0,
                 batch_offset=batch_offset
             )
-            #print(decoder_in.size(0) if valid else 1)
             scores = scores.view(decoder_in.size(0) if valid else 1 , -1, scores.size(-1))#Original first argument: decoder_in.size(0)
             log_probs = scores.squeeze(0).log()
             # returns [(batch_size x beam_size) , vocab ] when 1 step
             # or [ tgt_len, batch_size, vocab ] when full sentence
 
-        #print(memory_bank)
         rrr =False
         if alive_seq is not None and rrr:
             input_ids = alive_seq.cpu().apply_(lambda y: GlobalModel.converter[y])#.to('cuda:1')
@@ -690,11 +669,9 @@ class Translator(object):
             memory_bank = tuple(tile(x, beam_size, dim=1) for x in memory_bank)
             mb_device = memory_bank[0].device
         else:
-            #print('memory bank translate 3{}'.format(memory_bank.shape))
             memory_bank = tile(memory_bank, beam_size, dim=1)
             mb_device = memory_bank.device
         memory_lengths = tile(src_lengths, beam_size)
-        #print('memory bank translate 2{}'.format(memory_bank.shape))
         # (0) pt 2, prep the beam object
         beam = BeamSearch(
             beam_size,
@@ -731,8 +708,6 @@ class Translator(object):
                 step=step,
                 batch_offset=beam._batch_offset,
                 alive_seq=beam.alive_seq)
-            #print(log_probs.shape)
-            #print(log_probs)
 
             beam.advance(log_probs, attn)
             any_beam_is_finished = beam.is_finished.any()
@@ -888,7 +863,6 @@ class Translator(object):
         base_dir = os.path.abspath(__file__ + "/../../..")
         # Rollback pointer to the beginning.
         self.out_file.seek(0)
-        #print()
 
         res = subprocess.check_output(
             "perl %s/tools/multi-bleu.perl %s" % (base_dir, tgt_path),

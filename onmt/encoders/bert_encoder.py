@@ -8,7 +8,6 @@ from torch import no_grad
 from onmt.encoders.encoder import EncoderBase
 from onmt.modules import MultiHeadedAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
-#from pytorch_pretrained_bert import BertTokenizer, BertModel
 from pytorch_transformers import *
 
 import time
@@ -33,11 +32,6 @@ class BertEncoder(EncoderBase):
         self.BertEmbed_size = 768*4
         self.pre_out = nn.Linear(self.BertEmbed_size, hidden_size)
         self.relu = nn.ReLU()
-
-        #self.temp = torch.tensor([])
-        #self.iu = 0
-        #self.embed_lin = nn.Linear(768,  hidden_size)
-
 
     @classmethod
     def from_opt(cls, opt, embeddings):
@@ -103,7 +97,6 @@ class BertEncoder(EncoderBase):
 
     def forward(self, src, lengths=None):
         """See :func:`EncoderBase.forward()`"""
-        #start_time = time.time()
         self._check_args(src, lengths)
 
         #emb = self.embeddings(src)
@@ -133,23 +126,5 @@ class BertEncoder(EncoderBase):
         bert_tensors = bert_tensors.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
         #Linear layer to map Bert hidden state to the required size
-        #out = self.relu(self.pre_out(bert_tensors))
         out = self.pre_out(bert_tensors)
-
-        #print(self.pre_out.weight.data)
-        #if self.iu == 0:
-        #    self.temp = self.pre_out.weight.data
-        #    self.iu = 1 
-        #print(self.temp)
-        #if torch.all(self.pre_out.weight.data.eq(self.temp)):
-        #    print("yes")
-        #else: 
-        #    print("No")
-
-        #self.temp = self.pre_out.weight.data.clone()
-        #emb = self.embed_lin(bert_embeddings).transpose(0, 1).contiguous()
-
-        #print("--- %s seconds ---" % (time.time() - start_time))
-        #.transpose(0, 1).contiguous()
-        #print(out)
         return out.transpose(0, 1).contiguous(), out.transpose(0, 1).contiguous(), lengths

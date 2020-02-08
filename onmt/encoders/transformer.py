@@ -121,8 +121,4 @@ class TransformerEncoder(EncoderBase):
             out = layer(out, mask)
         out = self.layer_norm(out)
 
-        #print(out.shape)
-        #print('blabla')
-        #print(emb.shape)
-
         return emb, out.transpose(0, 1).contiguous(), lengths

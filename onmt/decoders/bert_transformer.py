@@ -229,49 +229,6 @@ class BertTransformerDecoder(DecoderBase):
         #Linear layer to map Bert hidden state to the required size
         emb = self.pre_out(bert_embeddings).transpose(0, 1).contiguous()
 
-        #tgt_start = tgt[0,:,:].unsqueeze(0)
-
-        #emb0 = self.embeddings(tgt_start, step=step)
-        #print(emb0.shape)
-        #last_token = False
-        #tgt_transp =tgt.transpose(0, 1).contiguous()
-
-        #bert_embeddings=[]
-        #for i,sequence in enumerate(tgt_transp):
-        #    #Get an array of words 
-        #    input_text=[]
-        #    for j,word_id in enumerate(sequence):
-        #        word = self.vocab.itos[word_id]
-        #        if word == '<unk>':
-        #            word = '[UNK]'
-        #        print(word)
-        #        if word == '</s>' or word == '[PAD]':
-        #          last_token=True
-        #          #tgt_end = tgt[-1,:,:].unsqueeze(0)
-        #          #print(word_id.shape)
-        #          emb1 = self.embeddings(word_id.unsqueeze(0).unsqueeze(1), step=step)#
-        #        else: input_text.append(word)
-
-        #    with no_grad():
-        #        #Get Bert hidden states
-        #        bert_embedding = self.get_bert_embeddings(input_text,512,16)
-        #        bert_embedding = self.pre_out(bert_embedding)
-        #        if last_token:
-        #          bert_embedding = torch.cat([bert_embedding,emb1],1)
-        #        print(bert_embedding.shape)
-        #        bert_embeddings.append(bert_embedding)
-
-
-        #bert_embeddings = torch.cat(bert_embeddings,0)
-        #bert_embeddings = bert_embeddings.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-        ##Linear layer to map Bert embeddings to the required size
-        #emb = bert_embeddings.transpose(0, 1).contiguous()
-        #print(emb.shape)
-        #if last_token: emb = torch.cat([emb0,emb,emb1],0)
-        #else: 
-        #emb = torch.cat([emb0,emb],0)
-
-
         assert emb.dim() == 3  # len x batch x embedding_dim
 
         output = emb.transpose(0, 1).contiguous()

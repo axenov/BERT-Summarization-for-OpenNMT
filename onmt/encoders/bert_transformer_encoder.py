@@ -40,10 +40,6 @@ class BertTransformerEncoder(EncoderBase):
              for i in range(num_layers)]) 
         self.layer_norm = nn.LayerNorm(hidden_size, eps=1e-6)
 
-        #self.temp = torch.tensor([])
-        #self.iu = 0
-        #self.embed_lin = nn.Linear(768,  hidden_size)
-
 
     @classmethod
     def from_opt(cls, opt, embeddings):
@@ -120,7 +116,6 @@ class BertTransformerEncoder(EncoderBase):
 
     def forward(self, src, lengths=None):
         """See :func:`EncoderBase.forward()`"""
-        #start_time = time.time()
         self._check_args(src, lengths)
 
         src_transp =src.transpose(0, 1).contiguous()
@@ -129,7 +124,6 @@ class BertTransformerEncoder(EncoderBase):
 
         src_bert_indeces = src_transp.view(src_transp.numel())
         src_bert_indeces = [GlobalModel.vocab[src_bert_indeces[i]] for i in range(src_transp.numel())]
-        #src_bert_indeces[src_bert_indeces == '<unk>'] = '[UNK]'
         src_bert_indeces = ['[UNK]' if wd == '<unk>' else wd for wd in src_bert_indeces]
 
 
@@ -158,7 +152,5 @@ class BertTransformerEncoder(EncoderBase):
         for layer in self.transformer:
             out = layer(out, mask)
         out = self.layer_norm(out)
-
-        #print(out.shape)
 
         return out.transpose(0, 1).contiguous(), out.transpose(0, 1).contiguous(), lengths

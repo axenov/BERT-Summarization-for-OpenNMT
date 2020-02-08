@@ -180,10 +180,6 @@ class MultiHeadedAttention(nn.Module):
                 relative_positions_matrix.to(device))
 
         query = shape(query)
-        #print('blia')
-        #print(query.shape)
-        #print(key.shape)
-        #print(value.shape)
 
         key_len = key.size(2)
         query_len = query.size(2)
@@ -201,11 +197,8 @@ class MultiHeadedAttention(nn.Module):
         print
         if mask is not None:
             mask = mask.unsqueeze(1)  # [B, 1, 1, T_values]
-            #print(mask.shape)
-            #print(scores.shape)
             scores = scores.masked_fill(mask, -1e18)
 
-        #print(scores.shape)
         # 3) Apply attention dropout and compute context vectors.
         attn = self.softmax(scores).to(query.dtype)
         drop_attn = self.dropout(attn)

@@ -190,8 +190,6 @@ class ConvMultiHeadedAttention(nn.Module):
 
         key_len = key.size(2)
         query_len = query.size(2)
-        #print('query_len:{}'.format(query_len))
-
         # 2) Calculate and scale scores.
         query = query / math.sqrt(dim_per_head)
         # batch x num_heads x query_len x key_len
@@ -237,8 +235,6 @@ class ConvMultiHeadedAttention(nn.Module):
             scores = torch.cat(scores_per_stride,3)
             value = torch.cat(value_per_stride,2)
 
-        #print(value_new.shape)
-        #print(scores_new.shape)
 
         # 3) Apply attention dropout and compute context vectors.
         attn = self.softmax(scores).to(query.dtype)

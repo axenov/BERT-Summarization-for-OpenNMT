@@ -179,9 +179,7 @@ class TransformerDecoder(DecoderBase):
 
     def forward(self, tgt, memory_bank, step=None, **kwargs):
         """Decode, possibly stepwise."""
-        
-        #GlobalModel.tgt_seq = tgt
-        
+                
         if step == 0:
             self._init_cache(memory_bank)
 
@@ -220,7 +218,6 @@ class TransformerDecoder(DecoderBase):
         if self._copy:
             attns["copy"] = attn
 
-        #print(dec_outs)
         # TODO change the way attns is returned dict => list or tuple (onnx)
         return dec_outs, attns
 
