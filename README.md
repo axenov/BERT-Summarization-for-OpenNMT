@@ -12,7 +12,7 @@ All dependencies can be installed via:
 pip install -r requirements.txt
 ```
 ## Usage
-To use the system the data must be tokenized by WordPiece tokenizer and saved in the OpenNMT input format.
+To use the system the data must be tokenized by [WordPiece tokenizer](https://github.com/huggingface/transformers) and saved in the OpenNMT input format.
 
 For general documentation check original [OpenNMT](https://github.com/OpenNMT/OpenNMT-py) repository.
 
