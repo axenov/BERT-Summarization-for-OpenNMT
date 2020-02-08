@@ -62,8 +62,10 @@ def get_fields(
     n_tgt_feats,
     #pad='<blank>',
     pad ='[PAD]',
-    bos='<s>',
-    eos='</s>',
+    #bos='<s>',
+    #eos='</s>',
+    bos='[CLS]',
+    eos='[SEP]',
     dynamic_dict=False,
     src_truncate=None,
     tgt_truncate=None

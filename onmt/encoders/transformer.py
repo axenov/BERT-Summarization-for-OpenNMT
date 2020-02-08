@@ -87,7 +87,6 @@ class TransformerEncoder(EncoderBase):
         super(TransformerEncoder, self).__init__()
 
         self.embeddings = embeddings
-        print(max_relative_positions)
         self.transformer = nn.ModuleList(
             [TransformerEncoderLayer(
                 d_model, heads, d_ff, dropout,
@@ -112,7 +111,6 @@ class TransformerEncoder(EncoderBase):
         self._check_args(src, lengths)
 
         emb = self.embeddings(src)
-
         out = emb.transpose(0, 1).contiguous()
         words = src[:, :, 0].transpose(0, 1)
         w_batch, w_len = words.size()
@@ -122,5 +120,9 @@ class TransformerEncoder(EncoderBase):
         for layer in self.transformer:
             out = layer(out, mask)
         out = self.layer_norm(out)
+
+        #print(out.shape)
+        #print('blabla')
+        #print(emb.shape)
 
         return emb, out.transpose(0, 1).contiguous(), lengths

@@ -8,9 +8,12 @@ from torch import no_grad
 from onmt.encoders.encoder import EncoderBase
 from onmt.modules import MultiHeadedAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
-from pytorch_pretrained_bert import BertTokenizer, BertModel, BertForMaskedLM
+#from pytorch_pretrained_bert import BertTokenizer, BertModel
+from pytorch_transformers import *
+
 import time
 import math
+from onmt.global_model import GlobalModel
 
 
 
@@ -23,34 +26,26 @@ class BertEncoder(EncoderBase):
         * memory_bank ``(src_len, batch_size, model_dim)``
     """
 
-    def __init__(self, embeddings, hidden_size,vocab, multiling):
+    def __init__(self, embeddings, hidden_size, multiling):
         super(BertEncoder, self).__init__()
 
         self.embeddings = embeddings
-
-        if multiling:
-            self.bertEmbedding =  BertModel.from_pretrained('bert-base-multilingual-cased')
-            self.tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased', do_lower_case=False)
-        else:
-            self.bertEmbedding =  BertModel.from_pretrained('bert-base-cased')
-            self.tokenizer = BertTokenizer.from_pretrained('bert-base-cased', do_lower_case=False)
-       
-        self.bertEmbedding.eval()
-        self.bertEmbedding.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-
-        self.vocab=vocab
-
         self.BertEmbed_size = 768*4
         self.pre_out = nn.Linear(self.BertEmbed_size, hidden_size)
+        self.relu = nn.ReLU()
+
+        #self.temp = torch.tensor([])
+        #self.iu = 0
+        #self.embed_lin = nn.Linear(768,  hidden_size)
 
 
     @classmethod
     def from_opt(cls, opt, embeddings):
         """Alternate constructor."""
-        return cls(embeddings,opt.enc_rnn_size,opt.vocab, opt.bert_multilingual)
+        return cls(embeddings,opt.enc_rnn_size,opt.bert_multilingual)
 
 
-    def get_hidden_states(self,input_text,window_length,stride):
+    def get_hidden_states_window(self,input_text,window_length,stride):
         #Calculate number of windows
         if len(input_text)>window_length:
             num_batch = math.ceil(len(input_text)/(window_length - stride))
@@ -60,81 +55,101 @@ class BertEncoder(EncoderBase):
         #Initialize output
         output = torch.zeros(1,len(input_text),self.BertEmbed_size)
         output = output.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+
+        #output_embed = torch.zeros(1,len(input_text),768)
+        #output_embed = output_embed.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+
         for i,pos in enumerate(start_tockens):
             text_batch = input_text[pos:pos+min(window_length,len(input_text))]
             #Convert words to indeces
-            indexed_tokens = self.tokenizer.convert_tokens_to_ids(text_batch)
+            indexed_tokens = GlobalModel.tokenizer.convert_tokens_to_ids(text_batch)
             tokens_tensor = LongTensor([indexed_tokens])
             tokens_tensor = tokens_tensor.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
             #Get Bert hidden states
             with no_grad():
-                hidden_states, _ = self.bertEmbedding(tokens_tensor)
-            #hidden_stateOld = hidden_states[8]+hidden_states[9]+hidden_states[10]+hidden_states[11]
-            hidden_state = torch.cat((hidden_states[8],hidden_states[9],hidden_states[10],hidden_states[11]), 2)
-            output[:, pos:pos + min(window_length,len(input_text))] += hidden_state
+                _,_,hidden_states = GlobalModel.bert_embeddings(tokens_tensor)
+                #bert_embeddings = self.bertEmbedding.embeddings(tokens_tensor)
+            hidden_state = torch.cat((hidden_states[9],hidden_states[10],hidden_states[11],hidden_states[12]), 2)
+            #output[:, pos:pos + min(window_length,len(input_text))] += hidden_state
+            output_embed[:, pos:pos + min(window_length,len(input_text))] += bert_embeddings
             if i!=0:
             	output[:, pos:pos + stride] = output[:, pos:pos + stride]/2
-            #print(output[:, pos + stride:pos + min(window_length-stride,len(input_text))])
-            """
-            output[:, pos + stride:pos + min(window_length-stride,len(input_text))] += hidden_state[:,stride:window_length-stride]
-            print('blablabla')
-            print(output)
-            print(output[:, pos + stride:pos + min(window_length-stride,len(input_text))])
-            print(hidden_state[:,stride:window_length-stride])
-            if pos!=0:
-                output[:, pos:pos + stride] += hidden_state[:,0:stride]/2
-            else:
-            	output[:, pos:pos + stride] += hidden_state[:,0:stride]
-            print(output)
-            print(hidden_state[:,0:stride])
-            print
-            if len(text_batch)>=window_length:
-                output[:, pos + window_length-stride:pos + window_length] += hidden_state[:,window_length-stride:window_length]/2
-            print(output)
-            print(hidden_state[:,window_length-stride:window_length])
-            """
+            	#output_embed[:, pos:pos + stride] = output_embed[:, pos:pos + stride]/2
 
+
+        return output
+
+    def get_hidden_states(self,input_text):
+        #Initialize output
+        output = torch.zeros(1,len(input_text),768*4)
+        output = output.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+
+        #output_embed = torch.zeros(1,len(input_text),768)
+        #output_embed = output_embed.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+
+        indexed_tokens = GlobalModel.tokenizer.convert_tokens_to_ids(input_text)
+
+        tokens_tensor = torch.tensor(indexed_tokens).unsqueeze(0)
+        tokens_tensor = tokens_tensor.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+
+        #Get Bert hidden states
+        with no_grad():
+            _,_,hidden_states = GlobalModel.bert_embeddings(tokens_tensor)
+            #output_embed = self.bertEmbedding.embeddings(tokens_tensor)
+        output = torch.cat((hidden_states[9],hidden_states[10],hidden_states[11],hidden_states[12]), 2)
 
         return output
 
 
     def forward(self, src, lengths=None):
         """See :func:`EncoderBase.forward()`"""
-        #torch.Size([3495, 16, 1])
-        #torch.Size([16, 3495, 512])
         #start_time = time.time()
         self._check_args(src, lengths)
 
-        emb = self.embeddings(src)
+        #emb = self.embeddings(src)
+
         src_transp =src.transpose(0, 1).contiguous()
-        #bert_tensors =[[] for _ in src[0]]
+        batch_num = src_transp.shape[0]
+        seq_length= src_transp.shape[1]
+
+        src_bert_indeces = src_transp.view(src_transp.numel())
+        src_bert_indeces = [GlobalModel.vocab[src_bert_indeces[i]] for i in range(src_transp.numel())]
+        #src_bert_indeces[src_bert_indeces == '<unk>'] = '[UNK]'
+        src_bert_indeces = ['[UNK]' if wd == '<unk>' else wd for wd in src_bert_indeces]
+
+
         bert_tensors=[]
-        for i,sequence in enumerate(src_transp):
-            #Get an array of words 
-            input_text=[]
-            for j,word_id in enumerate(sequence):
-                #print(self.vocab.itos[word_id])
-                word = self.vocab.itos[word_id]
-                if word == '<unk>':
-                    word = '[UNK]'
-                input_text.append(word)
-            with no_grad():
-                #Get Bert hidden states
-                encoder_embedded = self.get_hidden_states(input_text,512,16)
-
-                #indexed_tokens = self.tokenizer.convert_tokens_to_ids(input_text[0:511])
-                #tokens_tensor = tensor([indexed_tokens])
-
-                #tokens_tensor = tokens_tensor.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-                #Get Bert hidden states
-                #hidden_states, _ = self.bertEmbedding(tokens_tensor)
-                #encoder_embedded = hidden_states[8]+hidden_states[9]+hidden_states[10]+hidden_states[11]
-                bert_tensors.append(encoder_embedded)
+        #bert_embeddings=[]
+        for i in range(batch_num):
+            input_text = src_bert_indeces[i*seq_length:(i+1)*seq_length]
+            encoder_embedded = self.get_hidden_states(input_text)
+            #encoder_embedded = self.get_hidden_states_window(input_text,512,256)
+            bert_tensors.append(encoder_embedded)
+            #bert_embeddings.append(bert_embedding)
 
         bert_tensors = cat(bert_tensors,0)
+        #bert_embeddings = cat(bert_embeddings,0)
+
         bert_tensors = bert_tensors.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 
         #Linear layer to map Bert hidden state to the required size
+        #out = self.relu(self.pre_out(bert_tensors))
         out = self.pre_out(bert_tensors)
+
+        #print(self.pre_out.weight.data)
+        #if self.iu == 0:
+        #    self.temp = self.pre_out.weight.data
+        #    self.iu = 1 
+        #print(self.temp)
+        #if torch.all(self.pre_out.weight.data.eq(self.temp)):
+        #    print("yes")
+        #else: 
+        #    print("No")
+
+        #self.temp = self.pre_out.weight.data.clone()
+        #emb = self.embed_lin(bert_embeddings).transpose(0, 1).contiguous()
+
         #print("--- %s seconds ---" % (time.time() - start_time))
-        return emb, out.transpose(0, 1).contiguous(), lengths
+        #.transpose(0, 1).contiguous()
+        #print(out)
+        return out.transpose(0, 1).contiguous(), out.transpose(0, 1).contiguous(), lengths

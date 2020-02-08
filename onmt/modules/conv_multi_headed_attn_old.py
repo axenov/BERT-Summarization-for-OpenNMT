@@ -2,13 +2,15 @@
 import math
 import torch
 import torch.nn as nn
+import torch as torch
+import torch.nn.functional as F
 
 from onmt.utils.misc import generate_relative_positions_matrix,\
                             relative_matmul
 # from onmt.utils.misc import aeq
 
 
-class MultiHeadedAttention(nn.Module):
+class ConvMultiHeadedAttention(nn.Module):
     """Multi-Head Attention module from "Attention is All You Need"
     :cite:`DBLP:journals/corr/VaswaniSPUJGKP17`.
 
@@ -48,13 +50,13 @@ class MultiHeadedAttention(nn.Module):
        dropout (float): dropout parameter
     """
 
-    def __init__(self, head_count, model_dim, dropout=0.1,
+    def __init__(self, head_count, model_dim, M, N, dropout=0.1,
                  max_relative_positions=0):
         assert model_dim % head_count == 0
         self.dim_per_head = model_dim // head_count
         self.model_dim = model_dim
 
-        super(MultiHeadedAttention, self).__init__()
+        super(ConvMultiHeadedAttention, self).__init__()
         self.head_count = head_count
 
         self.linear_keys = nn.Linear(model_dim,
@@ -64,8 +66,11 @@ class MultiHeadedAttention(nn.Module):
         self.linear_query = nn.Linear(model_dim,
                                       head_count * self.dim_per_head)
         self.softmax = nn.Softmax(dim=-1)
+        self.convol_softmax = self.convolSoftmax
         self.dropout = nn.Dropout(dropout)
         self.final_linear = nn.Linear(model_dim, model_dim)
+        self.M=M
+        self.N=N
 
         self.max_relative_positions = max_relative_positions
 
@@ -117,7 +122,11 @@ class MultiHeadedAttention(nn.Module):
         head_count = self.head_count
         key_len = key.size(1)
         query_len = query.size(1)
+        value_len = value.size(1)
         device = key.device
+        # Size of the window
+        M = self.M
+        N = self.N
 
         def shape(x):
             """Projection."""
@@ -128,7 +137,6 @@ class MultiHeadedAttention(nn.Module):
             """Compute context."""
             return x.transpose(1, 2).contiguous() \
                     .view(batch_size, -1, head_count * dim_per_head)
-
         # 1) Project key, value, and query.
         if layer_cache is not None:
             if type == "self":
@@ -166,60 +174,68 @@ class MultiHeadedAttention(nn.Module):
             key = shape(key)
             value = shape(value)
 
-        if self.max_relative_positions > 0 and type == "self":
-            key_len = key.size(2)
-            # 1 or key_len x key_len
-            relative_positions_matrix = generate_relative_positions_matrix(
-                key_len, self.max_relative_positions,
-                cache=True if layer_cache is not None else False)
-            #  1 or key_len x key_len x dim_per_head
-            relations_keys = self.relative_positions_embeddings(
-                relative_positions_matrix.to(device))
-            #  1 or key_len x key_len x dim_per_head
-            relations_values = self.relative_positions_embeddings(
-                relative_positions_matrix.to(device))
-
         query = shape(query)
-        #print('blia')
-        #print(query.shape)
-        #print(key.shape)
-        #print(value.shape)
 
         key_len = key.size(2)
         query_len = query.size(2)
 
         # 2) Calculate and scale scores.
         query = query / math.sqrt(dim_per_head)
+        # batch x num_heads * query_len x num_heads * key_len
+        query = query.contiguous().view(batch_size, head_count * query_len, dim_per_head)
+        key = key.contiguous().view(batch_size, head_count * key_len, dim_per_head)
+        value = value.contiguous().view(batch_size, head_count *  value_len, dim_per_head)
+        #print('0: {}'.format(torch.cuda.memory_allocated() / 1024**2))
+
+
         # batch x num_heads x query_len x key_len
-        query_key = torch.matmul(query, key.transpose(2, 3))
-
-        if self.max_relative_positions > 0 and type == "self":
-            scores = query_key + relative_matmul(query, relations_keys, True)
-        else:
-            scores = query_key
+        scores = torch.matmul(query, key.transpose(1, 2))
+        #print('1: {}'.format(torch.cuda.memory_allocated() / 1024**2))
         scores = scores.float()
-        print
-        if mask is not None:
-            mask = mask.unsqueeze(1)  # [B, 1, 1, T_values]
-            #print(mask.shape)
-            #print(scores.shape)
-            scores = scores.masked_fill(mask, -1e18)
 
-        #print(scores.shape)
+        if mask is not None:
+          scores = scores.contiguous().view(batch_size, head_count, query_len, head_count , key_len).transpose(2,3)
+          mask = mask.unsqueeze(1)  # [B, 1, 1, T_values]
+          mask = mask.unsqueeze(1)  # [B, 1, 1, 1, T_values]
+          scores = scores.masked_fill(mask, -1e18)
+          scores = scores.transpose(2,3).contiguous().view(batch_size, head_count * query_len, head_count * key_len)
         # 3) Apply attention dropout and compute context vectors.
-        attn = self.softmax(scores).to(query.dtype)
-        drop_attn = self.dropout(attn)
+        #attn = self.softmax(scores).to(query.dtype)
+        #attn = self.convol_softmax(scores, head_count,M, N, device).to(query.dtype)
+
+        attn = scores.contiguous().view(batch_size, head_count, query_len, head_count , key_len)
+        del scores
+        mask_w = torch.zeros_like(attn, dtype=torch.uint8)  
+        #print('2: {}'.format(torch.cuda.memory_allocated() / 1024**2))
+
+        attn_masked = torch.zeros_like(attn).to(device)
+        for i in range(head_count):
+          #attn_temp[:,i,:,max(0,i-(N-1)//2):min(head_count,i+(N-1)//2+1),:] = attn[:,i,:,max(0,i-(N-1)//2):min(head_count,i+(N-1)//2+1),:]
+          mask_w[:,i,:,max(0,i-(N-1)//2):min(head_count,i+(N-1)//2+1),:] = 1
+        for j in range(query_len):
+          #mask_w[:,:,j,:,max(0,j-(M-1)//2):min(query_len,j+(M-1)//2+1)] = 1
+          mask_w[:,:,j,:,:] = 1
+          #attn_temp[:,:,j,:,max(0,j-(M-1)//2):min(query_len,j+(M-1)//2+1)] = attn[:,:,j,:,max(0,j-(M-1)//2):min(query_len,j+(M-1)//2+1)]
+        #print('6: {}'.format(torch.cuda.memory_allocated() / 1024**2))
+        torch.cuda.empty_cache()  
+
+        #attn_masked = attn_masked.contiguous().view(batch_size * head_count * query_len, head_count *  key_len)
+        #mask_w = mask_w.contiguous().view(batch_size * head_count * query_len, head_count *  key_len)
+        #attn = attn.contiguous().view(batch_size * head_count * query_len, head_count *  key_len)
+        attn_masked.masked_scatter_(mask_w,attn)
+        attn_masked = attn_masked.contiguous().view(batch_size, head_count * query_len, head_count *  key_len)
+
+        #print('7: {}'.format(torch.cuda.memory_allocated() / 1024**2))
+        torch.cuda.empty_cache()  
+        attn_masked = self.softmax(attn_masked).to(query.dtype)
+        #print('8: {}'.format(torch.cuda.memory_allocated() / 1024**2))
+
+        drop_attn = self.dropout(attn_masked)
         context_original = torch.matmul(drop_attn, value)
 
-        if self.max_relative_positions > 0 and type == "self":
-            context = unshape(context_original
-                              + relative_matmul(drop_attn,
-                                                relations_values,
-                                                False))
-        else:
-            context = unshape(context_original)
-
+        context = unshape(context_original)
         output = self.final_linear(context)
+
         # CHECK
         # batch_, q_len_, d_ = output.size()
         # aeq(q_len, q_len_)
@@ -229,7 +245,52 @@ class MultiHeadedAttention(nn.Module):
         # Return one attn
         top_attn = attn \
             .view(batch_size, head_count,
-                  query_len, key_len)[:, 0, :, :] \
+                  query_len, head_count, key_len)[:, 0, :,0, :] \
             .contiguous()
 
         return output, top_attn
+
+    def convolSoftmax(self,scores,head_count,M,N,device):
+
+        batch_size = scores.size(0)
+        # Num of heads X Sequence leangth
+        all_keys_size = scores.size(1)
+        # Exponent values
+        scores_exp = torch.exp(scores)
+        torch.cuda.empty_cache()
+        #print('2: {}'.format(torch.cuda.memory_allocated() / 1024**2))
+
+        #Convolute over sequence
+        output = scores_exp.contiguous().view(batch_size * all_keys_size * head_count, 1, all_keys_size//head_count)
+        kernel_seq = torch.zeros(1,1,M).to(device)
+        kernel_seq[:,:,0:M] = 1
+        output = F.conv1d(output, kernel_seq, padding=(M-1)//2)
+        output = output.contiguous().view(batch_size * all_keys_size , head_count, all_keys_size//head_count).transpose(1,2)
+        torch.cuda.empty_cache()
+        #print('3: {}'.format(torch.cuda.memory_allocated() / 1024**2))  
+
+        #Convolute over heads
+        output = output.contiguous().view(batch_size * all_keys_size * all_keys_size//head_count, 1, head_count)
+        kernel_head = torch.zeros(1,1,N).to(device)
+        kernel_head[:,:,0:N] = 1
+        output = F.conv1d(output, kernel_head, padding=(N-1)//2)
+        output = output.contiguous().view(batch_size * all_keys_size , all_keys_size//head_count, head_count).transpose(1,2)
+        torch.cuda.empty_cache()
+        #print('4: {}'.format(torch.cuda.memory_allocated() / 1024**2))
+
+        #Calculate softmax
+        output = output.contiguous().view(batch_size , all_keys_size , all_keys_size)
+        output = scores_exp.div(output)#
+        #self.softmax(scores).to(query.dtype)
+        del scores_exp
+        torch.cuda.empty_cache()
+        #print('5: {}'.format(torch.cuda.memory_allocated() / 1024**2))
+
+        #for i in range(all_keys_size):
+        #  mask = torch.zeros(all_keys_size)
+        #  #mask[1]
+        #  masked = scores_exp
+        #  output[:,:,i] = scores_exp[:,:,i] / torch.sum(masked,dim=2)
+
+        return output
+

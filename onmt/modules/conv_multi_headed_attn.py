@@ -190,6 +190,7 @@ class ConvMultiHeadedAttention(nn.Module):
 
         key_len = key.size(2)
         query_len = query.size(2)
+        #print('query_len:{}'.format(query_len))
 
         # 2) Calculate and scale scores.
         query = query / math.sqrt(dim_per_head)
@@ -206,12 +207,38 @@ class ConvMultiHeadedAttention(nn.Module):
             mask = mask.unsqueeze(1)  # [B, 1, 1, T_values]
             scores = scores.masked_fill(mask, -1e18)
 
+
         mask_w = torch.zeros_like(scores, dtype=torch.uint8)  
         attn_masked = torch.zeros_like(scores).to(device)
         for j in range(query_len):
           mask_w[:,:,j,max(0,j-(M-1)//2):min(query_len,j+(M-1)//2+1)] = 1
         attn_masked.masked_scatter_(mask_w,scores)
         scores = attn_masked
+
+
+        if N is not None:
+            head_pad_len = (N-1)//2
+
+            head_pad = torch.zeros(batch_size,head_pad_len,key_len,key_len).to(device)
+            head_pad_val = torch.zeros(batch_size,head_pad_len,key_len,dim_per_head).to(device)
+            #head_pad = scores[:,0:head_pad_len,:,:]
+            #head_pad_val = value[:,-head_pad_len:,:,:]
+
+            scores_pad = torch.cat([head_pad,scores,head_pad],1)
+            value_pad = torch.cat([head_pad_val,value,head_pad_val],1)
+
+            value_per_stride =[]
+            scores_per_stride = []
+
+            for i in range(N):
+              scores_per_stride.append(scores_pad[:,i:i+head_count,:,:])
+              value_per_stride.append(value_pad[:,i:i+head_count,:,:])
+
+            scores = torch.cat(scores_per_stride,3)
+            value = torch.cat(value_per_stride,2)
+
+        #print(value_new.shape)
+        #print(scores_new.shape)
 
         # 3) Apply attention dropout and compute context vectors.
         attn = self.softmax(scores).to(query.dtype)
@@ -234,9 +261,18 @@ class ConvMultiHeadedAttention(nn.Module):
         # aeq(d, d_)
 
         # Return one attn
-        top_attn = attn \
+
+        if N is not None:
+            top_attn = attn \
+            .view(batch_size, head_count,
+                  query_len*N, key_len)[:, 0, :, :] \
+            .contiguous()
+        else:
+            top_attn = attn \
             .view(batch_size, head_count,
                   query_len, key_len)[:, 0, :, :] \
             .contiguous()
+
+        #          query_len, key_len)[:, 0, :, :] \
 
         return output, top_attn

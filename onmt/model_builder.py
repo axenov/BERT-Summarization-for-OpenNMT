@@ -18,6 +18,10 @@ from onmt.modules.util_class import Cast
 from onmt.utils.misc import use_gpu
 from onmt.utils.logging import logger
 from onmt.utils.parse import ArgumentParser
+from onmt.global_model import GlobalModel
+from pytorch_transformers import *
+from onmt.modules.bert_generator import BertGenerator
+
 
 
 def build_embeddings(opt, text_field, for_encoder=True):
@@ -55,7 +59,7 @@ def build_embeddings(opt, text_field, for_encoder=True):
     return emb
 
 
-def build_encoder(opt, embeddings, vocab):
+def build_encoder(opt, embeddings):
     """
     Various encoder dispatcher function.
     Args:
@@ -63,7 +67,7 @@ def build_encoder(opt, embeddings, vocab):
         embeddings (Embeddings): vocab embeddings for this encoder.
     """
     enc_type = opt.encoder_type if opt.model_type == "text" else opt.model_type
-    opt.vocab=vocab
+    #opt.vacab=vocab
 
     return str2enc[enc_type].from_opt(opt, embeddings)
 
@@ -141,9 +145,30 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
         device = torch.device("cpu")
 
     # Vocabulary to generate text from tensor for Bert-based encoders
-    vocab=dict(fields)["src"].base_field.vocab
+    GlobalModel.vocab = dict(fields)["src"].base_field.vocab.itos
+    if model_opt.bert_multilingual:
+        GlobalModel.tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
+        GlobalModel.lang_model = BertForMaskedLM.from_pretrained('bert-base-multilingual-cased')
+        GlobalModel.lang_model.eval()
+        GlobalModel.lang_model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        GlobalModel.bert_embeddings = BertModel.from_pretrained('bert-base-multilingual-cased', output_hidden_states=True)
+        GlobalModel.bert_embeddings.eval()
+        GlobalModel.bert_embeddings.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+    else:
+        GlobalModel.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        #GlobalModel.lang_model = BertForMaskedLM.from_pretrained('bert-base-uncased')
+        #GlobalModel.lang_model.eval()
+        #GlobalModel.lang_model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        GlobalModel.bert_embeddings = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
+        GlobalModel.bert_embeddings.eval()
+        GlobalModel.bert_embeddings.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+    converter = {}
+    for i, w in enumerate(GlobalModel.vocab):
+        converter[i] = GlobalModel.tokenizer.convert_tokens_to_ids(w)
+    GlobalModel.converter=converter
+
     # Build encoder.
-    encoder = build_encoder(model_opt, src_emb, vocab)
+    encoder = build_encoder(model_opt, src_emb)
 
 
     # Build decoder.
@@ -165,19 +190,24 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
     model = onmt.models.NMTModel(encoder, decoder)
 
     # Build Generator.
+    #generator = BertGenerator(model_opt.copy_attn, model_opt.generator_function, model_opt.dec_rnn_size, 
+    #    model_opt.share_decoder_embeddings, decoder.embeddings.word_lut.weight ,fields["tgt"].base_field)
+
     if not model_opt.copy_attn:
         if model_opt.generator_function == "sparsemax":
             gen_func = onmt.modules.sparse_activations.LogSparsemax(dim=-1)
         else:
             gen_func = nn.LogSoftmax(dim=-1)
-        generator = nn.Sequential(
-            nn.Linear(model_opt.dec_rnn_size,
-                      len(fields["tgt"].base_field.vocab)),
-            Cast(torch.float32),
-            gen_func
-        )
+        #generator = nn.Sequential(
+        #    nn.Linear(model_opt.dec_rnn_size,
+        #              len(fields["tgt"].base_field.vocab)),
+        #    Cast(torch.float32),
+        #    gen_func
+        #)
+        generator = BertGenerator(gen_func, model_opt.dec_rnn_size, fields["tgt"].base_field)
+
         if model_opt.share_decoder_embeddings:
-            generator[0].weight = decoder.embeddings.word_lut.weight
+            generator.generator[0].weight = decoder.embeddings.word_lut.weight
     else:
         tgt_base_field = fields["tgt"].base_field
         vocab_size = len(tgt_base_field.vocab)

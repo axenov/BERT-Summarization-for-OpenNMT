@@ -29,13 +29,9 @@ class ConvTransformerEncoderLayer(nn.Module):
                  max_relative_positions=0):
         super(ConvTransformerEncoderLayer, self).__init__()
 
-        if layer_index==0:
+        if layer_index<=2:
             self.self_attn = ConvMultiHeadedAttention(
-                heads, d_model,5,3, dropout=dropout,
-                max_relative_positions=max_relative_positions)
-        elif layer_index==1:
-            self.self_attn = MultiHeadedAttention(
-                heads, d_model, dropout=dropout,
+                heads, d_model,13,3, dropout=dropout,
                 max_relative_positions=max_relative_positions)
         else:
             self.self_attn = MultiHeadedAttention(

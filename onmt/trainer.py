@@ -78,7 +78,7 @@ class Trainer(object):
     Args:
             model(:py:class:`onmt.models.model.NMTModel`): translation model
                 to train
-            train_loss(:obj:`onmt.utils.loss.LossComputeBase`):
+            train_loss(:obj:`onmt.utils.loss.LossComputeBasmodele`):
                training loss computation
             valid_loss(:obj:`onmt.utils.loss.LossComputeBase`):
                training loss computation
@@ -348,6 +348,7 @@ class Trainer(object):
                 outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt)
                 bptt = True
 
+                #print(batch)
                 # 3. Compute loss.
                 try:
                     loss, batch_stats = self.train_loss(

@@ -10,6 +10,8 @@ import torch.nn.functional as F
 import onmt
 from onmt.modules.sparse_losses import SparsemaxLoss
 from onmt.modules.sparse_activations import LogSparsemax
+from onmt.global_model import GlobalModel
+
 
 
 def build_loss_compute(model, tgt_field, opt, train=True):
@@ -21,6 +23,7 @@ def build_loss_compute(model, tgt_field, opt, train=True):
     Currently, the NMTLossCompute class handles all loss computation except
     for when using a copy mechanism.
     """
+
     device = torch.device("cuda" if onmt.utils.misc.use_gpu(opt) else "cpu")
 
     padding_idx = tgt_field.vocab.stoi[tgt_field.pad_token]
@@ -34,7 +37,7 @@ def build_loss_compute(model, tgt_field, opt, train=True):
         criterion = LabelSmoothingLoss(
             opt.label_smoothing, len(tgt_field.vocab), ignore_index=padding_idx
         )
-    elif isinstance(model.generator[-1], LogSparsemax):
+    elif isinstance(model.generator.generator[-1], LogSparsemax):
         criterion = SparsemaxLoss(ignore_index=padding_idx, reduction='sum')
     else:
         criterion = nn.NLLLoss(ignore_index=padding_idx, reduction='sum')
@@ -43,8 +46,9 @@ def build_loss_compute(model, tgt_field, opt, train=True):
     # probabilities, only the first part of the generator needs to be
     # passed to the NMTLossCompute. At the moment, the only supported
     # loss function of this kind is the sparsemax loss.
+    
     use_raw_logits = isinstance(criterion, SparsemaxLoss)
-    loss_gen = model.generator[0] if use_raw_logits else model.generator
+    loss_gen = model.generator.generator[0] if use_raw_logits else model.generator
     if opt.copy_attn:
         compute = onmt.modules.CopyGeneratorLossCompute(
             criterion, loss_gen, tgt_field.vocab, opt.copy_loss_by_seqlength
@@ -154,10 +158,13 @@ class LossComputeBase(nn.Module):
             loss, stats = self._compute_loss(batch, **shard_state)
             return loss / float(normalization), stats
         batch_stats = onmt.utils.Statistics()
+
+
         for shard in shards(shard_state, shard_size):
             loss, stats = self._compute_loss(batch, **shard)
             loss.div(float(normalization)).backward()
             batch_stats.update(stats)
+
         return None, batch_stats
 
     def _stats(self, loss, scores, target):
@@ -227,11 +234,19 @@ class NMTLossCompute(LossComputeBase):
             "target": batch.tgt[range_[0] + 1: range_[1], :, 0],
         }
 
-    def _compute_loss(self, batch, output, target):
+    def _compute_loss(self, batch, output, target, tgts = None, lang_scores = None):
         bottled_output = self._bottle(output)
 
-        scores = self.generator(bottled_output)
+
+
+        if tgts == None:
+            scores = self.generator(bottled_output)
+        else:
+            bottled_lang_scores = self._bottle(lang_scores[:,tgts,:].transpose(0,1).contiguous())
+            scores = self.generator(bottled_output, tgts = tgts, lang_scores = bottled_lang_scores)
+
         gtruth = target.view(-1)
+
 
         loss = self.criterion(scores, gtruth)
         stats = self._stats(loss.clone(), scores, gtruth)

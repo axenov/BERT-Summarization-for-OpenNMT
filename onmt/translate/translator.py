@@ -6,6 +6,7 @@ import os
 import math
 import time
 from itertools import count
+import numpy as np
 
 import torch
 
@@ -17,6 +18,10 @@ from onmt.translate.beam_search import BeamSearch
 from onmt.translate.random_sampling import RandomSampling
 from onmt.utils.misc import tile, set_random_seed
 from onmt.modules.copy_generator import collapse_copy_scores
+from onmt.global_model import GlobalModel
+import os
+
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 
 def build_translator(opt, report_score=True, logger=None, out_file=None):
@@ -113,8 +118,10 @@ class Translator(object):
             out_file=None,
             report_score=True,
             logger=None,
-            seed=-1):
+            seed=-1,
+            decoder_type = None):
         self.model = model
+        self.decoder_type = decoder_type
         self.fields = fields
         tgt_field = dict(self.fields)["tgt"].base_field
         self._tgt_vocab = tgt_field.vocab
@@ -242,7 +249,8 @@ class Translator(object):
             out_file=out_file,
             report_score=report_score,
             logger=logger,
-            seed=opt.seed)
+            seed=opt.seed,
+            decoder_type = model_opt.decoder_type)
 
     def _log(self, msg):
         if self.logger:
@@ -455,9 +463,14 @@ class Translator(object):
             self._exclusion_idxs, return_attention, self.max_length,
             sampling_temp, keep_topk, memory_lengths)
 
+        #log_file = open("logs.txt", "w", encoding='utf-8')
         for step in range(max_length):
             # Shape: (1, B, 1)
-            decoder_input = random_sampler.alive_seq[:, -1].view(1, -1, 1)
+            if self.decoder_type == "bert":
+                decoder_input = random_sampler.alive_seq[:, :].view(-1, 1, 1)
+            else:
+                decoder_input = random_sampler.alive_seq[:, -1].view(1, -1, 1)
+            #print(decoder_input.shape)
 
             log_probs, attn = self._decode_and_generate(
                 decoder_input,
@@ -467,8 +480,14 @@ class Translator(object):
                 memory_lengths=memory_lengths,
                 src_map=src_map,
                 step=step,
-                batch_offset=random_sampler.select_indices
+                batch_offset=random_sampler.select_indices,
+                alive_seq = random_sampler.alive_seq
             )
+            #for i,pr in enumerate(log_probs.view(log_probs.numel())):
+            #    log_file.write(str(pr.item()))
+            #    if i != log_probs.numel()-1:
+            #        log_file.write(', ')
+            #log_file.write("\n")
 
             random_sampler.advance(log_probs, attn)
             any_batch_is_finished = random_sampler.is_finished.any()
@@ -495,6 +514,7 @@ class Translator(object):
                 self.model.decoder.map_state(
                     lambda state, dim: state.index_select(dim, select_indices))
 
+        #log_file.close()
         results["scores"] = random_sampler.scores
         results["predictions"] = random_sampler.predictions
         results["attention"] = random_sampler.attention
@@ -528,6 +548,7 @@ class Translator(object):
 
         enc_states, memory_bank, src_lengths = self.model.encoder(
             src, src_lengths)
+        #print('memory_bank_translate {}'.format(memory_bank.shape))
         if src_lengths is None:
             assert not isinstance(memory_bank, tuple), \
                 'Ensemble decoding only supported for text data'
@@ -546,20 +567,33 @@ class Translator(object):
             memory_lengths,
             src_map=None,
             step=None,
-            batch_offset=None):
+            batch_offset=None,
+            alive_seq = None,
+            valid = False):
+        #print(decoder_in.shape)
         if self.copy_attn:
             # Turn any copied words into UNKs.
             decoder_in = decoder_in.masked_fill(
                 decoder_in.gt(self._tgt_vocab_len - 1), self._tgt_unk_idx
             )
+        #print(decoder_in.shape)
 
         # Decoder forward, takes [tgt_len, batch, nfeats] as input
         # and [src_len, batch, hidden] as memory_bank
         # in case of inference tgt_len = 1, batch = beam times batch_size
         # in case of Gold Scoring tgt_len = actual length, batch = 1 batch
+
         dec_out, dec_attn = self.model.decoder(
             decoder_in, memory_bank, memory_lengths=memory_lengths, step=step
         )
+        #print(decoder_in.shape)
+        #print(dec_out.shape)
+        if not valid:
+            dec_out = dec_out[-1,:,:].unsqueeze(0)
+            dec_attn['std'] = dec_attn['std'][-1,:,:].unsqueeze(0)
+        #print(dec_out.shape)
+
+        #
 
         # Generator forward.
         if not self.copy_attn:
@@ -571,7 +605,15 @@ class Translator(object):
             # returns [(batch_size x beam_size) , vocab ] when 1 step
             # or [ tgt_len, batch_size, vocab ] when full sentence
         else:
-            attn = dec_attn["copy"]
+            if valid:
+                attn = dec_attn["copy"][:decoder_in.size(0),:,:]#.unsqueeze(0)
+            else:
+                attn = dec_attn["copy"][-1,:,:].unsqueeze(0)
+            #print("blablabla")
+            #print(decoder_in.shape)
+            #print(dec_out.shape)
+            #print(attn.shape)
+            #print(src_map.shape)
             scores = self.model.generator(dec_out.view(-1, dec_out.size(2)),
                                           attn.view(-1, attn.size(2)),
                                           src_map)
@@ -588,10 +630,23 @@ class Translator(object):
                 batch_dim=0,
                 batch_offset=batch_offset
             )
-            scores = scores.view(decoder_in.size(0), -1, scores.size(-1))
+            #print(decoder_in.size(0) if valid else 1)
+            scores = scores.view(decoder_in.size(0) if valid else 1 , -1, scores.size(-1))#Original first argument: decoder_in.size(0)
             log_probs = scores.squeeze(0).log()
             # returns [(batch_size x beam_size) , vocab ] when 1 step
             # or [ tgt_len, batch_size, vocab ] when full sentence
+
+        #print(memory_bank)
+        rrr =False
+        if alive_seq is not None and rrr:
+            input_ids = alive_seq.cpu().apply_(lambda y: GlobalModel.converter[y])#.to('cuda:1')
+            mask_token = torch.tensor(GlobalModel.tokenizer.encode("[MASK]")).repeat(input_ids.shape[0], 1)
+            input_ids = torch.cat([input_ids,mask_token],dim=1).to('cuda')
+            language_scores = GlobalModel.lang_model(input_ids, masked_lm_labels=input_ids)[1][:,-1,:]
+
+            language_scores = language_scores[:,[v for v in GlobalModel.converter.values()]]
+            log_probs = log_probs + language_scores
+
         return log_probs, attn
 
     def _translate_batch(
@@ -635,10 +690,11 @@ class Translator(object):
             memory_bank = tuple(tile(x, beam_size, dim=1) for x in memory_bank)
             mb_device = memory_bank[0].device
         else:
+            #print('memory bank translate 3{}'.format(memory_bank.shape))
             memory_bank = tile(memory_bank, beam_size, dim=1)
             mb_device = memory_bank.device
         memory_lengths = tile(src_lengths, beam_size)
-
+        #print('memory bank translate 2{}'.format(memory_bank.shape))
         # (0) pt 2, prep the beam object
         beam = BeamSearch(
             beam_size,
@@ -659,7 +715,11 @@ class Translator(object):
             memory_lengths=memory_lengths)
 
         for step in range(max_length):
-            decoder_input = beam.current_predictions.view(1, -1, 1)
+            if self.decoder_type == "bert":
+                decoder_input = beam.alive_seq.transpose(0,1).unsqueeze(2)
+            else:
+                decoder_input = beam.current_predictions.view(1, -1, 1)
+
 
             log_probs, attn = self._decode_and_generate(
                 decoder_input,
@@ -669,7 +729,10 @@ class Translator(object):
                 memory_lengths=memory_lengths,
                 src_map=src_map,
                 step=step,
-                batch_offset=beam._batch_offset)
+                batch_offset=beam._batch_offset,
+                alive_seq=beam.alive_seq)
+            #print(log_probs.shape)
+            #print(log_probs)
 
             beam.advance(log_probs, attn)
             any_beam_is_finished = beam.is_finished.any()
@@ -800,10 +863,9 @@ class Translator(object):
                       src_vocabs, src_map):
         tgt = batch.tgt
         tgt_in = tgt[:-1]
-
         log_probs, attn = self._decode_and_generate(
             tgt_in, memory_bank, batch, src_vocabs,
-            memory_lengths=src_lengths, src_map=src_map)
+            memory_lengths=src_lengths, src_map=src_map, valid=True)
 
         log_probs[:, :, self._tgt_pad_idx] = 0
         gold = tgt_in
@@ -826,7 +888,7 @@ class Translator(object):
         base_dir = os.path.abspath(__file__ + "/../../..")
         # Rollback pointer to the beginning.
         self.out_file.seek(0)
-        print()
+        #print()
 
         res = subprocess.check_output(
             "perl %s/tools/multi-bleu.perl %s" % (base_dir, tgt_path),
