@@ -9,15 +9,13 @@ from onmt.encoders.image_encoder import ImageEncoder
 from onmt.encoders.bert_encoder import BertEncoder
 from onmt.encoders.bert_transformer_encoder import BertTransformerEncoder
 from onmt.encoders.conv_transformer import ConvTransformerEncoder
-from onmt.encoders.hybrid import HybridTransformerEncoder
-from onmt.encoders.bert_conv_transformer_encoder_concat import BertConvTransformerEncoder
 
 
 
 
 str2enc = {"rnn": RNNEncoder, "brnn": RNNEncoder, "cnn": CNNEncoder,
            "transformer": TransformerEncoder, "img": ImageEncoder,
-           "audio": AudioEncoder, "mean": MeanEncoder, "bert": BertEncoder,"bert-transformer":BertTransformerEncoder,"conv-transformer":ConvTransformerEncoder
+           "audio": AudioEncoder, "mean": MeanEncoder, "bert": BertEncoder,"bert-transformer":BertTransformerEncoder,"conv-transformer":ConvTransformerEncoder}
 
 __all__ = ["EncoderBase", "TransformerEncoder", "RNNEncoder", "CNNEncoder",
            "MeanEncoder", "str2enc", "BertEncoder","BertTransformerEncoder","ConvTransformerEncoder"]
