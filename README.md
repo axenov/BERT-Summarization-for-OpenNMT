@@ -11,6 +11,6 @@ To use the system the data must be tokenized by [BERT tokenizer](https://github.
 For general documentation check original [OpenNMT](https://github.com/OpenNMT/OpenNMT-py) repository.
 
 To train and use the system model follow the [documentation](https://opennmt.net/OpenNMT-py/Summarization.html) of OpenNMT for summarizaiton  
-* To use BERT-based model add *-encoder_type bert-transformer* and *-decoder_type bert* to the train ans test scripts parameters
+* To use BERT-based model add *-encoder_type bert-transformer* and *-decoder_type bert* to the train and test scripts parameters
 * To use the Convolutional Transformer model add *-encoder_type conv-transformer*
 * For non English data add *-bert_multilingual*
