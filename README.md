@@ -1,7 +1,7 @@
-This is an abstractive summarization system based on [OpenNMT](https://github.com/OpenNMT/OpenNMT-py), an open-source (MIT) neural machine translation system. 
+This is the implimentation of the paper [Abstractive Text Summarization based on Language Model Conditioning and Locality Modeling
+](https://arxiv.org/abs/2003.13027). It is developed as a fork of [OpenNMT](https://github.com/OpenNMT/OpenNMT-py) with two new models:
 
-The system is designed to explore pre-training and locality modeling applied to Transformer and consists of two new models:
-* BERT-Transformer - the model using pre-trained [BERT](https://github.com/huggingface/transformers) to condition encoder and decoder of vanilia Transformer.
+* BERT-Transformer - the model using pre-trained [BERT](https://github.com/huggingface/transformers) to condition encoder and decoder of Transformer.
 * Convolutional Transformer - the model replacing self-attention with convolutional self-attention to better model local dependencies.
 
 
