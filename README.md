@@ -1,16 +1,26 @@
-This is the implimentation of the paper [Abstractive Text Summarization based on Language Model Conditioning and Locality Modeling
-](https://arxiv.org/abs/2003.13027). It is developed as a fork of [OpenNMT](https://github.com/OpenNMT/OpenNMT-py) with two new models:
+## Neural-based Abstractive Text Summarization
 
-* BERT-Transformer - the model using pre-trained [BERT](https://github.com/huggingface/transformers) to condition encoder and decoder of Transformer.
-* Convolutional Transformer - the model replacing self-attention with convolutional self-attention to better model local dependencies.
+This system implements the abstractive text summarization models from the paper [Abstractive Text Summarization based on Language Model Conditioning and Locality Modeling
+](https://arxiv.org/abs/2003.13027). 
 
+The system supports two neural models:
+* BERT-Transformer (bert) - the model using pre-trained [BERT](https://github.com/huggingface/transformers) to condition the encoder and decoder of Transformer.
+* Transformer with Convolutional Self-Attention (conv) - the model replacing self-attention with convolutional self-attention to better model local dependencies.
+
+For summarization of long texts, the TF-IDF extractive summarizer can be used before the abstractive models.
 
 ## Usage
-To use the system the data must be tokenized by [BERT tokenizer](https://github.com/huggingface/transformers) and saved in the text tile, with tockens separated by spaces and and one line per text.
+First, download the models from [here](https://drive.google.com/file/d/1dDhfbRneUUNfVEMWB-fEpSqZz8VwsjID/view?usp=sharing) and extract them in the *models/* folder.
 
-For general documentation check original [OpenNMT](https://github.com/OpenNMT/OpenNMT-py) repository.
+Then, run the system specifyning the language of the text (English and German), the method of summarization and if the extractive summarizer must be used before the abstractive one.
 
-To train and use the system model follow the [documentation](https://opennmt.net/OpenNMT-py/Summarization.html) of OpenNMT for summarizaiton.
-* To use BERT-based model add *-encoder_type bert-transformer* and *-decoder_type bert* to the train and test scripts parameters
-* To use the Convolutional Transformer model add *-encoder_type conv-transformer*
-* For non English data add *-bert_multilingual*
+The example of usage:
+```python
+texts = []
+with open("data/sample_en.txt") as f:
+	texts = [text for text in f]
+
+model = AbstractiveSummarizer(language = 'en', method = 'conv', extract = True)
+for summ in model.summarize(texts):
+	print(summ)
+```

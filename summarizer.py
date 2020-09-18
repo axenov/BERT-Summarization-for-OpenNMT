@@ -25,15 +25,14 @@ class AbstractiveSummarizer():
 	def __init__(self, language = 'en', method = 'bert', extract = False):
 		'''
 		Arguments:
-			language: "en" or "de"
-			method: "bert" or "conv"
-			extract: True or False
+			Language: "en" or "de"
+			Method: "bert" or "conv"
+			Extract: True or False
 		'''
 		self.method = method
 
 
-		parser = self._get_parser(language, method)
-		self.opt = parser.parse_args()
+		self.opt = self._get_opt(language, self.method)
 
 		if torch.cuda.is_available():
 			self.opt.gpu = 0
@@ -42,44 +41,44 @@ class AbstractiveSummarizer():
 		self.translator = build_translator(self.opt, report_score=True)
 
 		self.language = language
-		if language == 'en':
+		if self.language == 'en':
 			self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-		elif language == 'de':
+		elif self.language == 'de':
 			self.tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
 			
-
 		
 		self.extract = extract
-		if extract:
+		if self.extract:
 			self.extractor = TFIDF()
 
 
-	def _get_parser(self, language, method):
-		parser = ArgumentParser(description='summarize.py')
-		if not os.path.exists(os.path.join(os.getcwd(), "config/en_bert_transformer.yml")):
-			sys.stderr.write("ERROR: Config.ini not found.")
+	def _get_opt(self, language, method):
+
+		parser = ArgumentParser(description='summarizer.py')
 
 		if language == 'en' and method == 'bert':
 			config_file = 'en_bert_transformer.yml'
-
 		elif language == 'en' and method == 'conv':
 			config_file = 'en_conv_transformer.yml'
-
 		elif language == 'de' and method == 'bert':
 			config_file = 'de_bert_transformer.yml'	
-
 		elif language == 'de' and method == 'conv':
-			config_file = 'de_conv_transformer.yml'	
+			config_file = 'de_conv_transformer.yml'
+		else:
+			sys.stderr.write(f"Method '{method}' for language '{language}' is not supported.")
 
-
+		#Hack to load parser arguments
 		prec_argv = sys.argv
-		sys.argv.extend(['-config', 'config/' + config_file]) 
-		sys.argv = prec_argv
+		sys.argv = [sys.argv[0]]
 
+		sys.argv.extend(['-config', 'config/' + config_file]) 
 		opts.config_opts(parser)
 		opts.translate_opts(parser)
+		opt = parser.parse_args()
 
-		return parser
+		sys.argv = prec_argv
+
+		return opt
 
 	def summarize(self, texts):
 		'''

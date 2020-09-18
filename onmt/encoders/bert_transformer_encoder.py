@@ -9,7 +9,9 @@ from onmt.encoders.encoder import EncoderBase
 from onmt.modules import MultiHeadedAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.encoders.transformer import TransformerEncoderLayer
-from pytorch_transformers import *
+#from pytorch_transformers import *
+from transformers import *
+
 from onmt.global_model import GlobalModel
 import time
 import math

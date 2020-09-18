@@ -26,10 +26,8 @@ curl -X GET localhost:5000/welcome
 
 app = Flask(__name__)
 app.secret_key = "super secret key"
-service = None
 
 CORS(app)
-
 '''
 
 Headers:
@@ -46,9 +44,15 @@ def summarize():
     if request.method == 'POST':
         cType = request.headers["Content-Type"]
         accept = request.headers["Accept"]
-        language = request.headers["Language"]
-        method = request.headers["Method"]
-        extract = request.headers["Extract"]
+
+        kvargs_summ ={}
+        if 'Extract' in request.headers:
+            kvargs_summ['extract'] = True if request.headers['Extract'] == 'true' else False
+        if 'Language' in request.headers:
+            kvargs_summ['language'] =  request.headers['Language']
+        if 'Method' in request.headers:
+            kvargs_summ['method'] =  request.headers['Method']
+
 
         data=request.stream.read().decode("utf-8")
         if accept == 'text/turtle':
@@ -62,8 +66,8 @@ def summarize():
             d = NIFDocument.parse_rdf(data, format='turtle')
         else:
             return 'ERROR: the contentType header '+cType+' is not supported!'
-
-        service = AbstractiveSummarizer(language = language, method = method, extract = extract)
+        
+        service = AbstractiveSummarizer(**kvargs_summ)
         summ = service.analyzeNIF(d)
         return summ.serialize(format="ttl")
     else:

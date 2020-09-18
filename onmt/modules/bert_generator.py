@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 from onmt.modules import Embeddings, CopyGenerator
 import onmt.modules
-from pytorch_transformers import *
+#from pytorch_transformers import *
+from transformers import *
 from onmt.modules.util_class import Cast
 from onmt.global_model import GlobalModel
 import numpy as np

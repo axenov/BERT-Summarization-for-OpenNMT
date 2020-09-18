@@ -9,7 +9,8 @@ from torch import no_grad
 from onmt.decoders.decoder import DecoderBase
 from onmt.modules import MultiHeadedAttention, AverageAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
-from pytorch_pretrained_bert import BertTokenizer, BertModel, BertForMaskedLM
+#from pytorch_pretrained_bert import BertTokenizer, BertModel, BertForMaskedLM
+from transformers import BertTokenizer, BertModel
 from onmt.global_model import GlobalModel
 
 

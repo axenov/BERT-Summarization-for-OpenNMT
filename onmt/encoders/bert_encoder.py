@@ -8,7 +8,8 @@ from torch import no_grad
 from onmt.encoders.encoder import EncoderBase
 from onmt.modules import MultiHeadedAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
-from pytorch_transformers import *
+#from pytorch_transformers import *
+from transformers import *
 
 import time
 import math
