@@ -16,6 +16,7 @@ Then, run the system specifyning the language of the text (English and German), 
 
 The example of usage:
 ```python
+from summarizer import AbstractiveSummarizer
 texts = []
 with open("data/sample_en.txt") as f:
 	texts = [text for text in f]
