@@ -19,7 +19,8 @@ from onmt.utils.misc import use_gpu
 from onmt.utils.logging import logger
 from onmt.utils.parse import ArgumentParser
 from onmt.global_model import GlobalModel
-from pytorch_transformers import *
+from transformers import *
+
 from onmt.modules.bert_generator import BertGenerator
 
 
@@ -147,21 +148,21 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
     # Vocabulary to generate text from tensor for Bert-based encoders
     GlobalModel.vocab = dict(fields)["src"].base_field.vocab.itos
     if model_opt.bert_multilingual:
+        #GlobalModel.lang_model = BertForMaskedLM.from_pretrained('bert-base-multilingual-cased')
+        #GlobalModel.lang_model.eval()
+        #GlobalModel.lang_model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
         GlobalModel.tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-cased')
-        GlobalModel.lang_model = BertForMaskedLM.from_pretrained('bert-base-multilingual-cased')
-        GlobalModel.lang_model.eval()
-        GlobalModel.lang_model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
         GlobalModel.bert_embeddings = BertModel.from_pretrained('bert-base-multilingual-cased', output_hidden_states=True)
-        GlobalModel.bert_embeddings.eval()
-        GlobalModel.bert_embeddings.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
-    else:
-        GlobalModel.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
+    else:        
         #GlobalModel.lang_model = BertForMaskedLM.from_pretrained('bert-base-uncased')
         #GlobalModel.lang_model.eval()
         #GlobalModel.lang_model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        GlobalModel.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         GlobalModel.bert_embeddings = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
-        GlobalModel.bert_embeddings.eval()
-        GlobalModel.bert_embeddings.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+
+    GlobalModel.bert_embeddings.eval()
+    GlobalModel.bert_embeddings.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     converter = {}
     for i, w in enumerate(GlobalModel.vocab):
         converter[i] = GlobalModel.tokenizer.convert_tokens_to_ids(w)

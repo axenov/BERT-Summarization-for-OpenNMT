@@ -225,6 +225,7 @@ class BertTransformerDecoder(DecoderBase):
             bert_embeddings.append(bert_embedding)
         bert_embeddings = torch.cat(bert_embeddings,0)
 
+
         bert_embeddings = bert_embeddings.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
         #Linear layer to map Bert hidden state to the required size
         emb = self.pre_out(bert_embeddings).transpose(0, 1).contiguous()

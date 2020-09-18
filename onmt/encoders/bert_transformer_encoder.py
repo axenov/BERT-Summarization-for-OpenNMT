@@ -116,6 +116,7 @@ class BertTransformerEncoder(EncoderBase):
 
     def forward(self, src, lengths=None):
         """See :func:`EncoderBase.forward()`"""
+
         self._check_args(src, lengths)
 
         src_transp =src.transpose(0, 1).contiguous()
@@ -149,8 +150,10 @@ class BertTransformerEncoder(EncoderBase):
         padding_idx = self.embeddings.word_padding_idx
         mask = words.data.eq(padding_idx).unsqueeze(1)  # [B, 1, T]
         # Run the forward pass of every layer of the tranformer.
+
         for layer in self.transformer:
             out = layer(out, mask)
         out = self.layer_norm(out)
+
 
         return out.transpose(0, 1).contiguous(), out.transpose(0, 1).contiguous(), lengths

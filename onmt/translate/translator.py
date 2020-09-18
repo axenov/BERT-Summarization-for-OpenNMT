@@ -616,15 +616,6 @@ class Translator(object):
             # returns [(batch_size x beam_size) , vocab ] when 1 step
             # or [ tgt_len, batch_size, vocab ] when full sentence
 
-        rrr =False
-        if alive_seq is not None and rrr:
-            input_ids = alive_seq.cpu().apply_(lambda y: GlobalModel.converter[y])#.to('cuda:1')
-            mask_token = torch.tensor(GlobalModel.tokenizer.encode("[MASK]")).repeat(input_ids.shape[0], 1)
-            input_ids = torch.cat([input_ids,mask_token],dim=1).to('cuda')
-            language_scores = GlobalModel.lang_model(input_ids, masked_lm_labels=input_ids)[1][:,-1,:]
-
-            language_scores = language_scores[:,[v for v in GlobalModel.converter.values()]]
-            log_probs = log_probs + language_scores
 
         return log_probs, attn
 
